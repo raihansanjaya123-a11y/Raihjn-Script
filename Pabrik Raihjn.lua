@@ -1,6 +1,7 @@
 --[[
-	Pabrik v0.74-SaplingOnly - Replika dengan GUI Modern
-	Dikembangkan oleh Kzoyz (Replika)
+	Pabrik v0.74-SaplingOnly - FIXED VERSION
+	Dikembangkan oleh Kzoyz (Replika) - Diperbaiki oleh Assistant
+	Fitur: GUI Modern, Auto Plant, Harvest, Block Farm, Auto Drop Seed
 ]]
 
 -- Cek environment
@@ -9,8 +10,8 @@ if not getgenv then
 	return
 end
 
--- Variabel global (dari script asli)
-getgenv().ScriptVersion = "Pabrik v0.74-SaplingOnly"
+-- Variabel global (default)
+getgenv().ScriptVersion = "Pabrik v0.74-Fixed"
 getgenv().PlaceDelay = 0.05
 getgenv().DropDelay = 0.5
 getgenv().StepDelay = 0.1
@@ -58,7 +59,7 @@ pcall(function() UIManager = require(RS:WaitForChild("Managers"):WaitForChild("U
 local RemotePlace = RS:WaitForChild("Remotes"):WaitForChild("PlayerPlaceItem")
 local RemoteBreak = RS:WaitForChild("Remotes"):WaitForChild("PlayerFist")
 
--- Heartbeat ghosting (dari asli)
+-- Heartbeat ghosting
 if getgenv().KzoyzHeartbeatPabrik then
 	getgenv().KzoyzHeartbeatPabrik:Disconnect()
 	getgenv().KzoyzHeartbeatPabrik = nil
@@ -83,7 +84,11 @@ getgenv().KzoyzHeartbeatPabrik = RunService.Heartbeat:Connect(function()
 	end
 end)
 
--- Helper functions (dari asli)
+-- ==========================================
+-- FUNGSI BANTU (HELPER)
+-- ==========================================
+
+-- Mendapatkan slot item berdasarkan ID
 local function GetSlotByItemID(targetID)
 	if not InventoryMod or not InventoryMod.Stacks then return nil end
 	for slotIndex, data in pairs(InventoryMod.Stacks) do
@@ -94,6 +99,7 @@ local function GetSlotByItemID(targetID)
 	return nil
 end
 
+-- Mendapatkan jumlah item berdasarkan ID
 local function GetItemAmountByID(targetID)
 	local total = 0
 	if not InventoryMod or not InventoryMod.Stacks then return total end
@@ -105,6 +111,7 @@ local function GetItemAmountByID(targetID)
 	return total
 end
 
+-- Memindai item yang tersedia di inventory
 local function ScanAvailableItems()
 	local items = {}
 	local dict = {}
@@ -125,6 +132,7 @@ local function ScanAvailableItems()
 	return items
 end
 
+-- Deteksi apakah ada drop sapling di grid tertentu
 local function CheckDropsAtGrid(TargetGridX, TargetGridY)
 	local TargetFolders = { workspace:FindFirstChild("Drops"), workspace:FindFirstChild("Gems") }
 	for _, folder in ipairs(TargetFolders) do
@@ -143,14 +151,16 @@ local function CheckDropsAtGrid(TargetGridX, TargetGridY)
 					local dX = math.floor(pos.X / getgenv().GridSize + 0.5)
 					local dY = math.floor(pos.Y / getgenv().GridSize + 0.5)
 					if dX == TargetGridX and dY == TargetGridY then
-						-- Deteksi sapling
+						-- Deteksi sapling (dari nama atau atribut)
 						local isSapling = false
+						-- Cek atribut objek
 						for _, attrValue in pairs(obj:GetAttributes()) do
 							if type(attrValue) == "string" and string.find(string.lower(attrValue), "sapling") then
 								isSapling = true
 								break
 							end
 						end
+						-- Cek descendant
 						if not isSapling then
 							for _, child in ipairs(obj:GetDescendants()) do
 								if child:IsA("StringValue") and string.find(string.lower(child.Value), "sapling") then
@@ -175,9 +185,13 @@ local function CheckDropsAtGrid(TargetGridX, TargetGridY)
 	return false
 end
 
+-- Logika drop item (menggunakan remote)
 local function DropItemLogic(targetID, dropAmount)
 	local slot = GetSlotByItemID(targetID)
-	if not slot then return false end
+	if not slot then
+		warn("Slot tidak ditemukan untuk", targetID)
+		return false
+	end
 	local dropRemote = RS:WaitForChild("Remotes"):FindFirstChild("PlayerDrop") or RS:WaitForChild("Remotes"):FindFirstChild("PlayerDropItem")
 	local promptRemote = RS:WaitForChild("Managers"):WaitForChild("UIManager"):FindFirstChild("UIPromptEvent")
 	if dropRemote and promptRemote then
@@ -185,6 +199,7 @@ local function DropItemLogic(targetID, dropAmount)
 		task.wait(0.2)
 		pcall(function() promptRemote:FireServer({ ButtonAction = "drp", Inputs = { amt = tostring(dropAmount) } }) end)
 		task.wait(0.1)
+		-- Tutup prompt yang mungkin muncul
 		pcall(function()
 			for _, gui in pairs(LP.PlayerGui:GetDescendants()) do
 				if gui:IsA("Frame") and string.find(string.lower(gui.Name), "prompt") then
@@ -193,10 +208,13 @@ local function DropItemLogic(targetID, dropAmount)
 			end
 		end)
 		return true
+	else
+		warn("Remote drop tidak ditemukan")
+		return false
 	end
-	return false
 end
 
+-- Memulihkan UI setelah drop
 local function ForceRestoreUI()
 	pcall(function()
 		if UIManager and type(UIManager.ClosePrompt) == "function" then UIManager:ClosePrompt() end
@@ -235,10 +253,14 @@ local function ForceRestoreUI()
 	end)
 end
 
+-- Berjalan menuju grid tertentu
 local function WalkToGrid(tX, tY, isPabrik)
 	local HitboxFolder = workspace:FindFirstChild("Hitbox")
 	local MyHitbox = HitboxFolder and HitboxFolder:FindFirstChild(LP.Name)
-	if not MyHitbox then return end
+	if not MyHitbox then
+		warn("Hitbox tidak ditemukan")
+		return
+	end
 
 	local startZ = MyHitbox.Position.Z
 	local currentX = math.floor(MyHitbox.Position.X / getgenv().GridSize + 0.5)
@@ -262,7 +284,7 @@ local function WalkToGrid(tX, tY, isPabrik)
 end
 
 -- ==========================================
--- GUI MODERN
+-- GUI MODERN (LENGKAP)
 -- ==========================================
 local Tema = {
 	BgUtama = Color3.fromRGB(30, 30, 40),
@@ -280,17 +302,17 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = LP:WaitForChild("PlayerGui")
 
--- Frame utama dengan shadow
+-- Frame utama
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 400, 0, 500)
-MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+MainFrame.Size = UDim2.new(0, 420, 0, 550)
+MainFrame.Position = UDim2.new(0.5, -210, 0.5, -275)
 MainFrame.BackgroundColor3 = Tema.BgUtama
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
 
--- Shadow (menggunakan ImageLabel dengan gradient)
+-- Shadow
 local Shadow = Instance.new("ImageLabel")
 Shadow.Name = "Shadow"
 Shadow.Size = UDim2.new(1, 20, 1, 20)
@@ -303,32 +325,26 @@ Shadow.ScaleType = Enum.ScaleType.Slice
 Shadow.SliceCenter = Rect.new(10, 10, 10, 10)
 Shadow.Parent = MainFrame
 
--- Rounded corners utama
+-- Sudut rounded
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 8)
 UICorner.Parent = MainFrame
 
--- Judul bar
+-- Title bar
 local TitleBar = Instance.new("Frame")
 TitleBar.Name = "TitleBar"
 TitleBar.Size = UDim2.new(1, 0, 0, 40)
 TitleBar.BackgroundColor3 = Tema.Aksen
 TitleBar.BorderSizePixel = 0
 TitleBar.Parent = MainFrame
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 8)
-TitleCorner.Parent = TitleBar
--- Buat sudut atas saja yang rounded
-TitleCorner:Destroy() -- kita akan buat sendiri
-
--- Biar rounded hanya di atas, kita bisa buat frame lain? lebih simple: buat sudut untuk MainFrame, lalu TitleBar tanpa corner, tapi akan terlihat. Alternatif: beri corner pada TitleBar dengan radius yang sama, tapi akan ada overlap. Kita biarkan saja dengan corner di MainFrame sudah cukup.
+-- Biarkan TitleBar tanpa corner sendiri (mengikuti MainFrame)
 
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Size = UDim2.new(1, -40, 1, 0)
 Title.Position = UDim2.new(0, 15, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🌾 Pabrik Controller  v0.74"
+Title.Text = "🌾 Pabrik Controller v0.74 (Fixed)"
 Title.TextColor3 = Tema.Teks
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
@@ -380,7 +396,7 @@ UIS.InputChanged:Connect(function(input)
 	end
 end)
 
--- Konten: ScrollingFrame
+-- Container (ScrollingFrame)
 local Container = Instance.new("ScrollingFrame")
 Container.Name = "Container"
 Container.Size = UDim2.new(1, 0, 1, -40)
@@ -393,14 +409,13 @@ Container.CanvasSize = UDim2.new(0, 0, 0, 0)
 Container.AutomaticCanvasSize = Enum.AutomaticSize.Y
 Container.Parent = MainFrame
 
--- Layout untuk container
+-- Layout container
 local ListLayout = Instance.new("UIListLayout")
 ListLayout.Padding = UDim.new(0, 8)
 ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 ListLayout.Parent = Container
 
--- Padding dari tepi
 local Padding = Instance.new("UIPadding")
 Padding.PaddingLeft = UDim.new(0, 10)
 Padding.PaddingRight = UDim.new(0, 10)
@@ -409,7 +424,7 @@ Padding.PaddingBottom = UDim.new(0, 10)
 Padding.Parent = Container
 
 -- ==========================================
--- FUNGSI PEMBUAT KOMPONEN (dengan gaya modern)
+-- FUNGSI PEMBUAT KOMPONEN UI
 -- ==========================================
 local function CreateToggle(parent, text, var)
 	local frame = Instance.new("Frame")
@@ -645,7 +660,7 @@ end)
 
 CreateToggle(Container, "START PABRIK (Balanced)", "EnablePabrik")
 
--- Baris Hit Count & Break Delay (dua kolom)
+-- Baris Hit Count & Break Delay
 local row1 = Instance.new("Frame")
 row1.Size = UDim2.new(1, 0, 0, 40)
 row1.BackgroundTransparency = 1
@@ -656,7 +671,6 @@ rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 rowLayout.Padding = UDim.new(0, 10)
 rowLayout.Parent = row1
 
--- Buat dua textbox dalam satu baris
 local hitBox = CreateTextBox(row1, "Hit Count", getgenv().HitCount, "HitCount")
 hitBox.Size = UDim2.new(0.45, 0, 0, 30)
 hitBox.Position = UDim2.new(0, 0, 0.5, -15)
@@ -705,7 +719,7 @@ breakXBox.Position = UDim2.new(0, 0, 0.5, -15)
 local breakYBox = CreateTextBox(breakSection, "Break Y", getgenv().BreakPosY, "BreakPosY")
 breakYBox.Size = UDim2.new(0.4, 0, 0, 30)
 breakYBox.Position = UDim2.new(0, 0, 0.5, -15)
-CreateButton(breakSection, "📍 Set", function()
+CreateButton(breakSection, "📍 Set Break", function()
 	local H = workspace:FindFirstChild("Hitbox") and workspace.Hitbox:FindFirstChild(LP.Name)
 	if H then
 		local bx = math.floor(H.Position.X / 4.5 + 0.5)
@@ -714,6 +728,7 @@ CreateButton(breakSection, "📍 Set", function()
 		getgenv().BreakPosY = by
 		breakXBox.Text = tostring(bx)
 		breakYBox.Text = tostring(by)
+		print("Break pos set to:", bx, by)
 	end
 end)
 
@@ -733,7 +748,7 @@ dropXBox.Position = UDim2.new(0, 0, 0.5, -15)
 local dropYBox = CreateTextBox(dropSection, "Drop Y", getgenv().DropPosY, "DropPosY")
 dropYBox.Size = UDim2.new(0.4, 0, 0, 30)
 dropYBox.Position = UDim2.new(0, 0, 0.5, -15)
-CreateButton(dropSection, "📍 Set", function()
+CreateButton(dropSection, "📍 Set Drop", function()
 	local H = workspace:FindFirstChild("Hitbox") and workspace.Hitbox:FindFirstChild(LP.Name)
 	if H then
 		local dx = math.floor(H.Position.X / 4.5 + 0.5)
@@ -742,38 +757,68 @@ CreateButton(dropSection, "📍 Set", function()
 		getgenv().DropPosY = dy
 		dropXBox.Text = tostring(dx)
 		dropYBox.Text = tostring(dy)
+		print("Drop pos set to:", dx, dy)
 	end
 end)
 
+-- Footer
+local footer = Instance.new("TextLabel")
+footer.Size = UDim2.new(1, 0, 0, 30)
+footer.BackgroundTransparency = 1
+footer.Text = getgenv().ScriptVersion .. " | Fixed by Assistant"
+footer.TextColor3 = Tema.Teks
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 12
+footer.TextTransparency = 0.5
+footer.Parent = Container
+
 -- ==========================================
--- LOGIC UTAMA PABRIK (sama persis dengan asli)
+-- LOGIKA UTAMA PABRIK (BALANCED)
 -- ==========================================
 task.spawn(function()
 	while true do
 		if getgenv().EnablePabrik then
-			if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then task.wait(2); continue end
+			if getgenv().SelectedSeed == "" or getgenv().SelectedBlock == "" then
+				warn("Seed atau Block belum dipilih!")
+				task.wait(2)
+				goto continue
+			end
 
 			-- FASE 1: PLANTING
-			WalkToGrid(getgenv().PabrikStartX, getgenv().PabrikYPos, true); task.wait(0.5)
+			print("Fase 1: Menanam...")
+			WalkToGrid(getgenv().PabrikStartX, getgenv().PabrikYPos, true)
+			task.wait(0.5)
 			for x = getgenv().PabrikStartX, getgenv().PabrikEndX do
 				if not getgenv().EnablePabrik then break end
 				local seedSlot = GetSlotByItemID(getgenv().SelectedSeed)
-				if not seedSlot then break end
-				WalkToGrid(x, getgenv().PabrikYPos, true); task.wait(0.1)
-				RemotePlace:FireServer(Vector2.new(x, getgenv().PabrikYPos), seedSlot); task.wait(getgenv().PlaceDelay)
+				if not seedSlot then
+					warn("Benih habis, stop menanam")
+					break
+				end
+				WalkToGrid(x, getgenv().PabrikYPos, true)
+				task.wait(0.1)
+				RemotePlace:FireServer(Vector2.new(x, getgenv().PabrikYPos), seedSlot)
+				task.wait(getgenv().PlaceDelay)
 			end
 
 			-- FASE 2: WAITING
 			if getgenv().EnablePabrik then
-				for w = 1, getgenv().GrowthTime do if not getgenv().EnablePabrik then break end; task.wait(1) end
+				print("Fase 2: Menunggu pertumbuhan...")
+				for w = 1, getgenv().GrowthTime do
+					if not getgenv().EnablePabrik then break end
+					task.wait(1)
+				end
 			end
 
 			-- FASE 3: HARVESTING
 			if getgenv().EnablePabrik then
-				WalkToGrid(getgenv().PabrikStartX, getgenv().PabrikYPos, true); task.wait(0.5)
+				print("Fase 3: Panen...")
+				WalkToGrid(getgenv().PabrikStartX, getgenv().PabrikYPos, true)
+				task.wait(0.5)
 				for x = getgenv().PabrikStartX, getgenv().PabrikEndX do
 					if not getgenv().EnablePabrik then break end
-					WalkToGrid(x, getgenv().PabrikYPos, true); task.wait(0.1)
+					WalkToGrid(x, getgenv().PabrikYPos, true)
+					task.wait(0.1)
 					local TGrid = Vector2.new(x, getgenv().PabrikYPos)
 					for hit = 1, getgenv().HitCount do
 						if not getgenv().EnablePabrik then break end
@@ -795,27 +840,35 @@ task.spawn(function()
 
 			-- FASE 4: AUTO FARM BLOCK
 			if getgenv().EnablePabrik then
-				WalkToGrid(getgenv().BreakPosX, getgenv().BreakPosY, true); task.wait(0.5)
+				print("Fase 4: Auto farm block...")
+				WalkToGrid(getgenv().BreakPosX, getgenv().BreakPosY, true)
+				task.wait(0.5)
 				local BreakTarget = Vector2.new(getgenv().BreakPosX - 1, getgenv().BreakPosY)
 
 				while getgenv().EnablePabrik do
 					local currentAmt = GetItemAmountByID(getgenv().SelectedBlock)
-					if currentAmt <= getgenv().BlockThreshold then break end
+					if currentAmt <= getgenv().BlockThreshold then
+						print("Jumlah block di bawah threshold, berhenti")
+						break
+					end
 					local blockSlot = GetSlotByItemID(getgenv().SelectedBlock)
-					if not blockSlot then break end
+					if not blockSlot then
+						warn("Block tidak ditemukan di inventory")
+						break
+					end
 
-					-- 1. PLACE
+					-- Place
 					RemotePlace:FireServer(BreakTarget, blockSlot)
 					task.wait(0.15)
 
-					-- 2. BREAK
+					-- Break
 					for hit = 1, getgenv().HitCount do
 						if not getgenv().EnablePabrik then break end
 						RemoteBreak:FireServer(BreakTarget)
 						task.wait(getgenv().BreakDelay)
 					end
 
-					-- 3. SMART COLLECT (only sapling)
+					-- Smart collect (sapling only)
 					if CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) then
 						local char = LP.Character
 						local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -838,20 +891,45 @@ task.spawn(function()
 						WalkToGrid(BreakTarget.X, BreakTarget.Y, true)
 						local waitTimeout = 0
 						while CheckDropsAtGrid(BreakTarget.X, BreakTarget.Y) and waitTimeout < 15 and getgenv().EnablePabrik do
-							task.wait(0.1); waitTimeout = waitTimeout + 1
+							task.wait(0.1)
+							waitTimeout = waitTimeout + 1
 						end
 
 						task.wait(0.1)
 						WalkToGrid(getgenv().BreakPosX, getgenv().BreakPosY, true)
 
 						if hrp and ExactHrpCF then
-							hrp.AssemblyLinearVelocity = Vector3.zero; hrp.AssemblyAngularVelocity = Vector3.zero
-							if MyHitbox and ExactHitboxCF then MyHitbox.CFrame = ExactHitboxCF; MyHitbox.AssemblyLinearVelocity = Vector3.zero end
+							hrp.AssemblyLinearVelocity = Vector3.zero
+							hrp.AssemblyAngularVelocity = Vector3.zero
+							if MyHitbox and ExactHitboxCF then
+								MyHitbox.CFrame = ExactHitboxCF
+								MyHitbox.AssemblyLinearVelocity = Vector3.zero
+							end
 							hrp.CFrame = ExactHrpCF
-							if PlayerMovement and ExactPMPos then pcall(function() PlayerMovement.Position = ExactPMPos; PlayerMovement.OldPosition = ExactPMPos; PlayerMovement.VelocityX = 0; PlayerMovement.VelocityY = 0; PlayerMovement.VelocityZ = 0; PlayerMovement.Grounded = true end) end
-							RunService.Heartbeat:Wait(); RunService.Heartbeat:Wait()
+							if PlayerMovement and ExactPMPos then
+								pcall(function()
+									PlayerMovement.Position = ExactPMPos
+									PlayerMovement.OldPosition = ExactPMPos
+									PlayerMovement.VelocityX = 0
+									PlayerMovement.VelocityY = 0
+									PlayerMovement.VelocityZ = 0
+									PlayerMovement.Grounded = true
+								end)
+							end
+							RunService.Heartbeat:Wait()
+							RunService.Heartbeat:Wait()
 							hrp.Anchored = false
-							for _ = 1, 2 do if PlayerMovement and ExactPMPos then pcall(function() PlayerMovement.Position = ExactPMPos; PlayerMovement.OldPosition = ExactPMPos; PlayerMovement.VelocityY = 0; PlayerMovement.Grounded = true end) end; RunService.Heartbeat:Wait() end
+							for _ = 1, 2 do
+								if PlayerMovement and ExactPMPos then
+									pcall(function()
+										PlayerMovement.Position = ExactPMPos
+										PlayerMovement.OldPosition = ExactPMPos
+										PlayerMovement.VelocityY = 0
+										PlayerMovement.Grounded = true
+									end)
+								end
+								RunService.Heartbeat:Wait()
+							end
 						end
 						getgenv().IsGhosting = false
 					end
@@ -859,40 +937,42 @@ task.spawn(function()
 				task.wait(0.5)
 			end
 
-			-- FASE 5: AUTO DROP & REFILL
+			-- FASE 5: AUTO DROP & REFILL (PERBAIKAN)
 			if getgenv().EnablePabrik then
 				local currentSeedAmt = GetItemAmountByID(getgenv().SelectedSeed)
 				if currentSeedAmt ~= getgenv().KeepSeedAmt then
+					print("Fase 5: Auto drop seed. Current:", currentSeedAmt, "Keep:", getgenv().KeepSeedAmt)
 					WalkToGrid(getgenv().DropPosX, getgenv().DropPosY, true)
-					task.wait(1.5)
+					task.wait(1.5) -- Beri waktu sampai posisi
 
 					while getgenv().EnablePabrik do
 						local current = GetItemAmountByID(getgenv().SelectedSeed)
 						local toDrop = current - getgenv().KeepSeedAmt
-						if toDrop <= 0 then break end
+						if toDrop <= 0 then
+							print("Jumlah seed sudah sesuai, stop drop")
+							break
+						end
 						local dropNow = math.min(toDrop, 200)
+						print("Mencoba drop", dropNow, "seed")
 						local success = DropItemLogic(getgenv().SelectedSeed, dropNow)
 						if success then
-							task.wait(getgenv().DropDelay + 0.3)
+							print("Berhasil drop, menunggu...")
+							task.wait(getgenv().DropDelay + 0.5) -- Tambah jeda
 						else
+							warn("Gagal drop, hentikan loop")
 							break
 						end
 					end
+
 					ForceRestoreUI()
+				else
+					print("Jumlah seed sudah pas, tidak perlu drop")
 				end
 			end
 		end
+		::continue::
 		task.wait(1)
 	end
 end)
 
--- Info versi di footer
-local footer = Instance.new("TextLabel")
-footer.Size = UDim2.new(1, 0, 0, 30)
-footer.BackgroundTransparency = 1
-footer.Text = getgenv().ScriptVersion .. " | Modern GUI"
-footer.TextColor3 = Tema.Teks
-footer.Font = Enum.Font.Gotham
-footer.TextSize = 12
-footer.TextTransparency = 0.5
-footer.Parent = Container
+print("Script Pabrik Fixed telah dimuat! GUI muncul di tengah.")
